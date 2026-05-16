@@ -36,6 +36,11 @@ jobs:
             docker-compose.prod.yml
             .env.example
 
+      # Docker yêu cầu image name toàn bộ lowercase.
+      # github.repository_owner giữ nguyên case (vd: ThanhThang5722) → phải lowercase thủ công.
+      - name: Compute lowercase image owner
+        run: echo "IMAGE_OWNER_LC=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
+
       - name: Prepare deploy bundle
         run: |
           mkdir -p deploy
@@ -51,8 +56,8 @@ jobs:
           JWT_EXPIRATION_MS=3600000
           ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}
           ADMIN_PASSWORD=${{ secrets.ADMIN_PASSWORD }}
-          BACKEND_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/booking-backend:${{ inputs.image_tag }}
-          FRONTEND_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/booking-frontend:${{ inputs.image_tag }}
+          BACKEND_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_OWNER_LC }}/booking-backend:${{ inputs.image_tag }}
+          FRONTEND_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_OWNER_LC }}/booking-frontend:${{ inputs.image_tag }}
           EOF
 
       - name: Copy bundle to Azure VM
