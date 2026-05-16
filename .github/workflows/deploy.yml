@@ -22,18 +22,24 @@ jobs:
     # secret protection rules trong Settings → Environments
     environment: production
 
+    # GITHUB_TOKEN cần quyền pull GHCR image của repo này
+    permissions:
+      contents: read
+      packages: read
+
     steps:
-      - name: Checkout (chỉ cần docker-compose.yml + .env.example)
+      - name: Checkout (chỉ cần compose + .env.example)
         uses: actions/checkout@v4
         with:
           sparse-checkout: |
             docker-compose.yml
+            docker-compose.prod.yml
             .env.example
 
       - name: Prepare deploy bundle
         run: |
           mkdir -p deploy
-          cp docker-compose.yml deploy/
+          cp docker-compose.yml docker-compose.prod.yml deploy/
           # Tạo .env từ GitHub secrets
           cat <<EOF > deploy/.env
           DB_NAME=${{ secrets.DB_NAME }}
@@ -68,9 +74,9 @@ jobs:
           script: |
             cd ~/booking
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-            docker compose pull
-            docker compose up -d --remove-orphans
-            # Đợi backend healthcheck pass mới coi là deploy xong
+            # Dùng cả base + prod override → bind các port nội bộ chỉ vào loopback
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --remove-orphans
             for i in $(seq 1 30); do
               if curl -fs http://localhost:8080/actuator/health > /dev/null; then
                 echo "Backend healthy after ${i}0s"; exit 0

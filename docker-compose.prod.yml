@@ -1,0 +1,31 @@
+# Production override — apply lên trên docker-compose.yml
+# Usage:  docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Mục đích: bind các dịch vụ nội bộ chỉ vào loopback (127.0.0.1) thay vì 0.0.0.0,
+# để Internet KHÔNG truy cập được — chỉ container nội bộ trong app-network mới gọi được.
+# Docker mặc định bypass UFW, nên đây là cách an toàn nhất.
+#
+# Frontend (nginx) là single entrypoint — chỉ expose 80 ra ngoài.
+
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  redis:
+    ports:
+      - "127.0.0.1:6379:6379"
+
+  rabbitmq:
+    ports:
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
+
+  backend:
+    ports:
+      - "127.0.0.1:8080:8080"
+
+  frontend:
+    # Chỉ port này public ra Internet
+    ports:
+      - "80:80"
