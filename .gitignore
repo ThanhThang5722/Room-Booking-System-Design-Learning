@@ -1,0 +1,29 @@
+# Env / secrets
+#.env
+*.env.local
+
+# Java / Maven
+booking-backend/target/
+booking-backend/.mvn/
+*.class
+*.jar
+*.war
+hs_err_pid*
+
+# Node / Vite
+booking-frontend/node_modules/
+booking-frontend/dist/
+booking-frontend/.vite/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

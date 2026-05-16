@@ -1,0 +1,89 @@
+name: Deploy to Azure VM
+
+# Manual trigger — tránh auto-deploy mỗi push. Production muốn approval step.
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Image tag to deploy (latest, sha-xxxxxxx, v1.2.3...)'
+        required: true
+        default: 'latest'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_OWNER: ${{ github.repository_owner }}
+
+jobs:
+  deploy:
+    name: SSH deploy
+    runs-on: ubuntu-latest
+
+    # GitHub environment "production" → có thể setup required reviewers,
+    # secret protection rules trong Settings → Environments
+    environment: production
+
+    steps:
+      - name: Checkout (chỉ cần docker-compose.yml + .env.example)
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            docker-compose.yml
+            .env.example
+
+      - name: Prepare deploy bundle
+        run: |
+          mkdir -p deploy
+          cp docker-compose.yml deploy/
+          # Tạo .env từ GitHub secrets
+          cat <<EOF > deploy/.env
+          DB_NAME=${{ secrets.DB_NAME }}
+          DB_USER=${{ secrets.DB_USER }}
+          DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+          RABBITMQ_USER=${{ secrets.RABBITMQ_USER }}
+          RABBITMQ_PASSWORD=${{ secrets.RABBITMQ_PASSWORD }}
+          JWT_SECRET=${{ secrets.JWT_SECRET }}
+          JWT_EXPIRATION_MS=3600000
+          ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}
+          ADMIN_PASSWORD=${{ secrets.ADMIN_PASSWORD }}
+          BACKEND_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/booking-backend:${{ inputs.image_tag }}
+          FRONTEND_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/booking-frontend:${{ inputs.image_tag }}
+          EOF
+
+      - name: Copy bundle to Azure VM
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.AZURE_VM_HOST }}
+          username: ${{ secrets.AZURE_VM_USER }}
+          key: ${{ secrets.AZURE_VM_SSH_KEY }}
+          source: 'deploy/*'
+          target: '~/booking/'
+          strip_components: 1
+
+      - name: Deploy via SSH (pull + up)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.AZURE_VM_HOST }}
+          username: ${{ secrets.AZURE_VM_USER }}
+          key: ${{ secrets.AZURE_VM_SSH_KEY }}
+          script: |
+            cd ~/booking
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            docker compose pull
+            docker compose up -d --remove-orphans
+            # Đợi backend healthcheck pass mới coi là deploy xong
+            for i in $(seq 1 30); do
+              if curl -fs http://localhost:8080/actuator/health > /dev/null; then
+                echo "Backend healthy after ${i}0s"; exit 0
+              fi
+              sleep 10
+            done
+            echo "Backend không healthy sau 5 phút"; exit 1
+
+      - name: Notify deployment result
+        if: always()
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "✅ Deploy tag ${{ inputs.image_tag }} to Azure VM succeeded"
+          else
+            echo "❌ Deploy failed — kiểm tra logs"
+          fi
